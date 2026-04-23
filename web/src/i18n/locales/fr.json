@@ -3221,6 +3221,8 @@
     "调用次数分布": "Distribution des appels de modèles",
     "调用次数排行": "Classement des appels de modèles",
     "调用趋势": "Tendance des appels",
+    "令牌实时消耗": "Consommation de tokens en temps réel",
+    "令牌消耗排行": "Classement de consommation de tokens",
     "调试信息": "Informations de débogage",
     "谨慎": "Prudent",
     "警告": "Avertissement",
