@@ -3236,6 +3236,8 @@
     "调用次数分布": "Models call distribution",
     "调用次数排行": "Models call ranking",
     "调用趋势": "Call trend",
+    "令牌实时消耗": "Token Real-time Consumption",
+    "令牌消耗排行": "Token Consumption Ranking",
     "调试信息": "Debug information",
     "谨慎": "Cautious",
     "警告": "Warning",

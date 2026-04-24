@@ -243,6 +243,107 @@ export const useDashboardCharts = (
     },
   });
 
+  const [spec_token_trend, setSpecTokenTrend] = useState({
+    type: 'line',
+    data: [
+      {
+        id: 'tokenTrendData',
+        values: [],
+      },
+    ],
+    xField: 'Time',
+    yField: 'Tokens',
+    seriesField: 'Model',
+    legends: {
+      visible: true,
+      selectMode: 'single',
+    },
+    title: {
+      visible: true,
+      text: t('令牌实时消耗'),
+      subtext: '',
+    },
+    tooltip: {
+      mark: {
+        content: [
+          {
+            key: (datum) => datum['Model'],
+            value: (datum) => renderNumber(datum['Tokens']),
+          },
+        ],
+      },
+      dimension: {
+        content: [
+          {
+            key: (datum) => datum['Model'],
+            value: (datum) => datum['Tokens'] || 0,
+          },
+        ],
+        updateContent: (array) => {
+          array.sort((a, b) => b.value - a.value);
+          let sum = 0;
+          for (let i = 0; i < array.length; i++) {
+            let value = parseFloat(array[i].value);
+            if (isNaN(value)) value = 0;
+            sum += value;
+            array[i].value = renderNumber(value);
+          }
+          array.unshift({
+            key: t('总计'),
+            value: renderNumber(sum),
+          });
+          return array;
+        },
+      },
+    },
+    color: {
+      specified: modelColorMap,
+    },
+  });
+
+  const [spec_token_rank, setSpecTokenRank] = useState({
+    type: 'bar',
+    data: [
+      {
+        id: 'tokenRankData',
+        values: [],
+      },
+    ],
+    xField: 'Model',
+    yField: 'Tokens',
+    seriesField: 'Model',
+    legends: {
+      visible: true,
+      selectMode: 'single',
+    },
+    title: {
+      visible: true,
+      text: t('令牌消耗排行'),
+      subtext: '',
+    },
+    bar: {
+      state: {
+        hover: {
+          stroke: '#000',
+          lineWidth: 1,
+        },
+      },
+    },
+    tooltip: {
+      mark: {
+        content: [
+          {
+            key: (datum) => datum['Model'],
+            value: (datum) => renderNumber(datum['Tokens']),
+          },
+        ],
+      },
+    },
+    color: {
+      specified: modelColorMap,
+    },
+  });
+
   const [spec_rank_bar, setSpecRankBar] = useState({
     type: 'bar',
     data: [
@@ -433,8 +534,10 @@ export const useDashboardCharts = (
       );
 
       const modelTotals = new Map();
+      const modelTokenTotals = new Map();
       for (let [_, value] of aggregatedData) {
         updateMapValue(modelTotals, value.model, value.count);
+        updateMapValue(modelTokenTotals, value.model, value.token_used);
       }
 
       const newPieData = Array.from(modelTotals)
@@ -506,24 +609,40 @@ export const useDashboardCharts = (
       });
       modelLineData.sort((a, b) => a.Time.localeCompare(b.Time));
 
-      // ===== 模型调用次数排行柱状图 =====
-      const MAX_RANK_MODELS = 20;
-      const allRankData = Array.from(modelTotals)
-        .map(([model, count]) => ({
-          Model: model,
-          Count: count,
-        }))
-        .sort((a, b) => b.Count - a.Count);
+      // ===== 令牌实时消耗折线图 =====
+      let tokenTrendData = [];
+      chartTimePoints.forEach((time) => {
+        const timeData = Array.from(uniqueModels).map((model) => {
+          const key = `${time}-${model}`;
+          const aggregated = aggregatedData.get(key);
+          return {
+            Time: time,
+            Model: model,
+            Tokens: aggregated?.token_used || 0,
+          };
+        });
+        tokenTrendData.push(...timeData);
+      });
+      tokenTrendData.sort((a, b) => a.Time.localeCompare(b.Time));
 
-      let rankData;
-      if (allRankData.length > MAX_RANK_MODELS) {
-        const topModels = allRankData.slice(0, MAX_RANK_MODELS);
-        const otherCount = allRankData
+      // ===== 令牌消耗排行柱状图 =====
+      const MAX_RANK_MODELS = 20;
+      const allTokenRankData = Array.from(modelTokenTotals)
+        .map(([model, token_used]) => ({
+          Model: model,
+          Tokens: token_used,
+        }))
+        .sort((a, b) => b.Tokens - a.Tokens);
+
+      let tokenRankData;
+      if (allTokenRankData.length > MAX_RANK_MODELS) {
+        const topModels = allTokenRankData.slice(0, MAX_RANK_MODELS);
+        const otherTokens = allTokenRankData
           .slice(MAX_RANK_MODELS)
-          .reduce((sum, item) => sum + item.Count, 0);
-        rankData = [...topModels, { Model: t('其他'), Count: otherCount }];
+          .reduce((sum, item) => sum + item.Tokens, 0);
+        tokenRankData = [...topModels, { Model: t('其他'), Tokens: otherTokens }];
       } else {
-        rankData = allRankData;
+        tokenRankData = allTokenRankData;
       }
 
       updateChartSpec(
@@ -535,11 +654,19 @@ export const useDashboardCharts = (
       );
 
       updateChartSpec(
-        setSpecRankBar,
-        rankData,
-        `${t('总计')}：${renderNumber(totalTimes)}`,
+        setSpecTokenTrend,
+        tokenTrendData,
+        `${t('总计')}：${renderNumber(totalTokens)}`,
         newModelColors,
-        'rankData',
+        'tokenTrendData',
+      );
+
+      updateChartSpec(
+        setSpecTokenRank,
+        tokenRankData,
+        `${t('总计')}：${renderNumber(totalTokens)}`,
+        newModelColors,
+        'tokenRankData',
       );
 
       setPieData(newPieData);
@@ -565,28 +692,13 @@ export const useDashboardCharts = (
   // ========== 用户维度图表数据处理 ==========
   const updateUserChartData = useCallback(
     (data) => {
-      const { rankingData, trendData: userTrend } = processUserData(
+      const { trendData: userTrend } = processUserData(
         data,
         dataExportDefaultTime,
         10,
       );
 
-      const userRankValues = rankingData.map((item) => ({
-        User: item.User,
-        rawQuota: item.Quota,
-        Quota: getQuotaWithUnit(item.Quota, 4),
-      })).sort((a, b) => b.rawQuota - a.rawQuota);
-
-      const totalUserQuota = rankingData.reduce((s, i) => s + i.Quota, 0);
-
-      setSpecUserRank((prev) => ({
-        ...prev,
-        data: [{ id: 'userRankData', values: userRankValues }],
-        title: {
-          ...prev.title,
-          subtext: `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
-        },
-      }));
+      const totalUserQuota = userTrend.reduce((s, item) => s + (item.Quota || 0), 0);
 
       const userTrendValues = userTrend.map((item) => ({
         Time: item.Time,
@@ -618,8 +730,8 @@ export const useDashboardCharts = (
     spec_pie,
     spec_line,
     spec_model_line,
-    spec_rank_bar,
-    spec_user_rank,
+    spec_token_trend,
+    spec_token_rank,
     spec_user_trend,
     updateChartData,
     updateUserChartData,
